@@ -2,7 +2,7 @@ package org.openpolicyagent.linkerd
 
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.twitter.finagle._
-import com.twitter.finagle.http.{Request, Response}
+import com.twitter.finagle.http.{HeaderMap, Request, Response}
 import com.twitter.io.Buf
 import com.twitter.io.Buf.Utf8
 import com.twitter.util.Future
@@ -36,9 +36,16 @@ case class AuthzIdentifier(
       // Prepare OPA query
       val client = Http.newService(opaNetloc)
       val request = http.Request(http.Method.Post, opaDocument)
+
+      request.host = opaNetloc  // Finagle was not setting host automatically.
       request.setContentTypeJson()
-      request.content = mapRequestToBuf(OPARequest(Input(req.method.toString(), req.path)))
-      request.host = "localhost"
+
+      val pair = mapHeadersToSourceIPHostPair(req.headerMap) match {
+        case Some((s, h)) => (Some(s), Some(h))
+        case None => (None, None)
+      }
+
+      request.content = mapRequestToBuf(OPARequest(Input(req.method.toString(), req.path, req.headerMap, pair._1.map(Identity), pair._2)))
 
       // Execute OPA query
       client(request).map { response =>
@@ -72,10 +79,15 @@ class AuthzIdentifierInitializer extends IdentifierInitializer {
 // OPA request contains an input document.
 case class OPARequest(input: Input)
 
+case class Identity(source_ip: String)
+
 // In this case, policy can be written over incoming HTTP requests.
 case class Input(
                   method: String,
-                  path: String
+                  path: String,
+                  headers: HeaderMap,
+                  identity: Option[Identity],
+                  host: Option[String]
                 )
 
 // In this case, policy produces a boolean value indicating if request should be allowed.
@@ -84,6 +96,26 @@ case class OPAResponse(result: Option[Boolean])
 private[linkerd] object Helpers {
 
   implicit val f = DefaultFormats
+
+  def mapHeadersToSourceIPHostPair(headers: HeaderMap): Option[(String, String)] = {
+    headers.get("Forwarded").flatMap({ s =>
+      val parts = s.split(';')
+      val items = parts.flatMap({ t =>
+        val pair = t.split('=').toList match {
+          case k :: v :: Nil => Some((k, v))
+          case _ => None
+        }
+        pair match {
+          case Some((k, v)) => List((k,v))
+          case None => List.empty[(String, String)]
+        }
+      }).toMap
+      (items.get("for"), items.get("host")) match {
+        case (Some(sourceIP), Some(host)) => Some((sourceIP, host))
+        case _ => None
+      }
+    })
+  }
 
   def mapRequestToBuf(request: OPARequest): Buf = {
     Utf8(Serialization.write(request))

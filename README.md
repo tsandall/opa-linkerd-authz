@@ -10,9 +10,9 @@ Experimental policy-enabled linkerd identifier that enforces auth/z policy.
 
 ## Running (local)
 
-Download and untar linkerd-0.8.5, change into directory.
+Download and untar linkerd-0.9.0, change into directory.
 
-1. `export L5D_HOME=$PWD` sets environment variable that linkerd-0.8.5-exec script uses to load plugins.
+1. `export L5D_HOME=$PWD` sets environment variable that linkerd-0.9.0-exec script uses to load plugins.
 1. `mkdir -p plugins` creates directory to stick plugin JARs into.
 1. Copy JAR file into `plugins` directory.
 1. Create linkerd configuration:
@@ -21,7 +21,7 @@ Download and untar linkerd-0.8.5, change into directory.
   cat > config/opa_linkerd_example.yaml <<EOF
   routers:
   - protocol: http
-    baseDtab: |
+    dtab: |
       /host     => /#/io.l5d.fs;
       /method   => /$/io.buoyant.http.anyMethodPfx/host;
       /http/1.1 => /method;
@@ -43,7 +43,7 @@ Download and untar linkerd-0.8.5, change into directory.
 1. Run linkerd:
 
   ```bash
-  ./linkerd-0.8.5-exec config/opa_linkerd_example.yaml
+  ./linkerd-0.9.0-exec config/opa_linkerd_example.yaml
   ```
 
 ## Manual Testing (local)
