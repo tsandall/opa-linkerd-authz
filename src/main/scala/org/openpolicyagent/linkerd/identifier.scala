@@ -16,6 +16,8 @@ import org.json4s.jackson.{Serialization, parseJson}
 
 case class AuthzIdentifier(
   prefix: Path,
+  netloc: String,
+  queryPath: String,
   baseDtab: () => Dtab = () => Dtab.base
 ) extends RoutingFactory.Identifier[Request] {
 
@@ -29,15 +31,11 @@ case class AuthzIdentifier(
     // Execute normal identifier.
     identifier(req).flatMap { id =>
 
-      // TODO(tsandall): turn into configuration
-      val opaNetloc = "localhost:8181"
-      val opaDocument = "/v1/data/linkerd_experiment/allow"
-
       // Prepare OPA query
-      val client = Http.newService(opaNetloc)
-      val request = http.Request(http.Method.Post, opaDocument)
+      val client = Http.newService(netloc)
+      val request = http.Request(http.Method.Post, queryPath)
 
-      request.host = opaNetloc  // Finagle was not setting host automatically.
+      request.host = netloc  // Finagle was not setting host automatically.
       request.setContentTypeJson()
 
       val pair = mapHeadersToSourceIPHostPair(req.headerMap) match {
@@ -61,9 +59,12 @@ case class AuthzIdentifier(
 
 class AuthzIdentifierConfig extends HttpIdentifierConfig{
 
+  var netloc: String = null
+  var queryPath: String = null
+
   @JsonIgnore
   override def newIdentifier(prefix: Path, baseDtab: () => Dtab): Identifier[Request] = {
-    new AuthzIdentifier(prefix, baseDtab)
+    new AuthzIdentifier(prefix, netloc, queryPath, baseDtab)
   }
 }
 
