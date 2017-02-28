@@ -8,9 +8,10 @@ import com.twitter.io.Buf.Utf8
 import com.twitter.util.Future
 import io.buoyant.linkerd.IdentifierInitializer
 import io.buoyant.linkerd.protocol.HttpIdentifierConfig
+import io.buoyant.linkerd.protocol.http.HeaderTokenIdentifierConfig
 import io.buoyant.router.RoutingFactory
 import io.buoyant.router.RoutingFactory.{Identifier, RequestIdentification, UnidentifiedRequest}
-import io.buoyant.router.http.MethodAndHostIdentifier
+import io.buoyant.router.http.{HeaderIdentifier, MethodAndHostIdentifier}
 import org.json4s.DefaultFormats
 import org.json4s.jackson.{Serialization, parseJson}
 
@@ -18,6 +19,7 @@ case class AuthzIdentifier(
   prefix: Path,
   netloc: String,
   queryPath: String,
+  header: Option[String],
   baseDtab: () => Dtab = () => Dtab.base
 ) extends RoutingFactory.Identifier[Request] {
 
@@ -26,7 +28,7 @@ case class AuthzIdentifier(
   def apply(req: Request): Future[RequestIdentification[Request]] = {
 
     // TODO(tsandall): support other built-in identifiers through config/reflection
-    val identifier = MethodAndHostIdentifier.mk(prefix, baseDtab)
+    val identifier = HeaderIdentifier(prefix, header.getOrElse(HeaderTokenIdentifierConfig.defaultHeader), headerPath = false, baseDtab)
 
     // Execute normal identifier.
     identifier(req).flatMap { id =>
@@ -57,14 +59,11 @@ case class AuthzIdentifier(
   }
 }
 
-class AuthzIdentifierConfig extends HttpIdentifierConfig{
-
-  var netloc: String = null
-  var queryPath: String = null
+class AuthzIdentifierConfig(netloc: String, queryPath: String, header: Option[String] = None) extends HttpIdentifierConfig{
 
   @JsonIgnore
   override def newIdentifier(prefix: Path, baseDtab: () => Dtab): Identifier[Request] = {
-    new AuthzIdentifier(prefix, netloc, queryPath, baseDtab)
+    new AuthzIdentifier(prefix, netloc, queryPath, header, baseDtab)
   }
 }
 
@@ -119,7 +118,8 @@ private[linkerd] object Helpers {
   }
 
   def mapRequestToBuf(request: OPARequest): Buf = {
-    Utf8(Serialization.write(request))
+    val s = Serialization.write(request)
+    Utf8(s)
   }
 
   def mapResponseToBoolean(response: Response): Boolean = {
